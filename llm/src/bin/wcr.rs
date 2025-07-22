@@ -41,23 +41,23 @@ fn main() {
     let mut matched_pairs = Vec::new();
 
     walk_md_dir(&md_root, &rs_root, &mut |md_path, rs_path| {
-        let (bytes, lines) = file_stats(md_path).unwrap_or((0, 0));
+        let (bytes, lines) = file_stats(&md_path).unwrap_or((0, 0));
         total_md_bytes += bytes;
         total_md_lines += lines;
         matched_md_bytes += bytes;
         matched_md_lines += lines;
 
-        let (bytes, lines) = file_stats(rs_path).unwrap_or((0, 0));
+        let (bytes, lines) = file_stats(&rs_path).unwrap_or((0, 0));
         total_rs_bytes += bytes;
         total_rs_lines += lines;
         matched_rs_bytes += bytes;
         matched_rs_lines += lines;
 
-        matched_pairs.push((md_path.clone(), rs_path.clone(), bytes, lines));
+        matched_pairs.push((md_path, rs_path, bytes, lines));
     });
 
     walk_rs_dir(&rs_root, &md_root, &mut |rs_path| {
-        let (bytes, lines) = file_stats(rs_path).unwrap_or((0, 0));
+        let (bytes, lines) = file_stats(&rs_path).unwrap_or((0, 0));
         total_rs_bytes += bytes;
         total_rs_lines += lines;
         unmatched_rs_bytes += bytes;
@@ -88,50 +88,62 @@ fn main() {
 
 fn walk_md_dir<F>(md_root: &Path, rs_root: &Path, callback: &mut F)
 where
-    F: FnMut(&Path, &Path),
+    F: FnMut(PathBuf, PathBuf),
 {
-    let walker = walkdir::WalkDir::new(md_root);
-    for entry in walker {
-        match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("md") {
-                    let relative = path.strip_prefix(md_root).unwrap();
-                    let mut rs_path = rs_root.to_path_buf();
-                    rs_path.push(relative);
-                    rs_path.set_extension("rs");
-                    if rs_path.exists() {
-                        callback(path, &rs_path);
+    fn walk<F>(dir: &Path, md_root: &Path, rs_root: &Path, callback: &mut F)
+    where
+        F: FnMut(PathBuf, PathBuf),
+    {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        walk(&path, md_root, rs_root, callback);
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("md") {
+                        let relative = path.strip_prefix(md_root).unwrap();
+                        let mut rs_path = rs_root.to_path_buf();
+                        rs_path.push(relative);
+                        rs_path.set_extension("rs");
+                        if rs_path.exists() {
+                            callback(path, rs_path);
+                        }
                     }
                 }
             }
-            Err(e) => eprintln!("Error walking md directory: {}", e),
         }
     }
+    walk(md_root, md_root, rs_root, callback);
 }
 
 fn walk_rs_dir<F>(rs_root: &Path, md_root: &Path, callback: &mut F)
 where
-    F: FnMut(&Path),
+    F: FnMut(PathBuf),
 {
-    let walker = walkdir::WalkDir::new(rs_root);
-    for entry in walker {
-        match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-                    let relative = path.strip_prefix(rs_root).unwrap();
-                    let mut md_path = md_root.to_path_buf();
-                    md_path.push(relative);
-                    md_path.set_extension("md");
-                    if !md_path.exists() {
-                        callback(path);
+    fn walk<F>(dir: &Path, rs_root: &Path, md_root: &Path, callback: &mut F)
+    where
+        F: FnMut(PathBuf),
+    {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        walk(&path, rs_root, md_root, callback);
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                        let relative = path.strip_prefix(rs_root).unwrap();
+                        let mut md_path = md_root.to_path_buf();
+                        md_path.push(relative);
+                        md_path.set_extension("md");
+                        if !md_path.exists() {
+                            callback(path);
+                        }
                     }
                 }
             }
-            Err(e) => eprintln!("Error walking rs directory: {}", e),
         }
     }
+    walk(rs_root, rs_root, md_root, callback);
 }
 
 fn file_stats(path: &Path) -> io::Result<(u64, u64)> {
