@@ -14,6 +14,6 @@ src/bin/llm-ollama-qwen.rs: BINARY = llm-claude
 
 # Generic pattern rule: any .md in instruct/ creates corresponding .rs in src/bin/
 src/%.rs: instruct/%.md
-	cargo run --bin $(or $(BINARY),$(DEFAULT_BINARY)) -- instruct/$*.md src/$*.rs
+	cargo run --package llm --bin $(or $(BINARY),$(DEFAULT_BINARY)) -- instruct/$*.md src/$*.rs
 
 .PHONY: all
