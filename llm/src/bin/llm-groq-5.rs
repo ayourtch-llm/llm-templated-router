@@ -1,12 +1,13 @@
 use std::env;
 use std::fs;
-use std::path::{Path};
+use std::path::Path;
 use std::process::{Command};
 use std::time::SystemTime;
 use filetime::FileTime;
 
 mod mylib;
 
+#[allow(special_module_name)]
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -87,19 +88,20 @@ fn main() {
     fs::write(&resp_path_gen, &response)
         .unwrap_or_else(|_| panic!("Failed to write response file: {}", resp_path_gen));
 
-    
     eprintln!("Writing draft to: {}", draft_path);
     fs::write(&draft_path, &response)
         .unwrap_or_else(|_| panic!("Failed to write draft file: {}", draft_path));
-   
-    let orig_path = format!("{}.orig", output_file); 
-    fs::rename(output_file, &orig_path)
-            .unwrap_or_else(|_| panic!("Failed to move orig file to temp file"));
+
+    let backup_path = format!("{}.backup", output_file);
+    if output_path.exists() {
+        fs::rename(output_file, &backup_path)
+            .unwrap_or_else(|_| panic!("Failed to backup original file"));
+    }
 
     fs::write(&output_file, &response)
         .unwrap_or_else(|_| panic!("Failed to write temporary file"));
     
-    let second_compiler_errors = run_cargo_check(&output_file);
+    let second_compiler_errors = run_cargo_check(output_file);
 
     let eval_prompt = format!(
         "Please CAREFULLY evaluate the below description (enclosed into <result-description></result-description>), and two outputs corresponding to this description, first one enclosed into \"<first-result></first-result>\" and the second enclosed into \"<second-result></second-result>\", with compile errors of first result included into \"<first-compile-errors></first-compile-errors>\" and second compile errors as \"<second-compile-errors></second-compile-errors>\", and evaluate which of the two is more precise and correct in implementing the description - and also which of them compiles! Then, if the first result is better, output the phrase 'First result is better.', if the second result is better, output the phrase 'The second implementation is better.'. Output only one of the two phrases, and nothing else\n\n<result-description>\n{}\n</result-description>\n\n<first-result>\n{}</first-result>\n\n<second-result>\n{}</second-result>\n\n<first-compile-errors>\n{}</first-compile-errors>\n\n<second-compile-errors>\n{}</second-compile-errors>",
@@ -123,51 +125,50 @@ fn main() {
 
     if trimmed == "First result is better." {
         eprintln!("First result is better");
-        if first_compiler_errors.is_empty() {
-            eprintln!("No compile errors, restoring original");
-            fs::rename(&orig_path, output_file)
-                .unwrap_or_else(|_| panic!("Failed to move orig file to temp file"));
-            if Path::new(&draft_path).exists() {
-                fs::rename(&draft_path, &rej_path)
-                    .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
-            }
-            let now = SystemTime::now();
-            filetime::set_file_mtime(output_file, FileTime::from_system_time(now))
-                .expect("Failed to update mtime");
-        } else {
-            eprintln!("First result better but has compile errors");
-            if Path::new(&draft_path).exists() {
-                fs::rename(&draft_path, &rej_path)
-                    .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
-            }
-            std::process::exit(1);
+        if Path::new(&backup_path).exists() {
+            fs::rename(&backup_path, output_file)
+                .unwrap_or_else(|_| panic!("Failed to restore original file"));
         }
+        if Path::new(&draft_path).exists() {
+            fs::rename(&draft_path, &rej_path)
+                .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
+        }
+        let now = SystemTime::now();
+        filetime::set_file_mtime(output_file, FileTime::from_system_time(now))
+            .expect("Failed to update mtime");
     } else if trimmed == "The second implementation is better." {
         eprintln!("Second implementation is better");
+        if Path::new(&backup_path).exists() {
+            fs::remove_file(&backup_path)
+                .unwrap_or_else(|_| panic!("Failed to remove backup file"));
+        }
         if Path::new(&draft_path).exists() {
-            fs::remove_file(&draft_path)
-                .unwrap_or_else(|_| panic!("Failed to remove draft file"));
+            fs::rename(&draft_path, &rej_path)
+                .unwrap_or_else(|_| panic!("Failed to rename accepted draft"));
         }
     } else {
         eprintln!("Unexpected evaluation response: {}", trimmed);
+        if Path::new(&backup_path).exists() {
+            fs::rename(&backup_path, output_file)
+                .unwrap_or_else(|_| panic!("Failed to restore original file"));
+        }
         std::process::exit(1);
     }
 
     eprintln!("Program completed successfully");
 }
 
-
 use serde_json::Value;
 
 /// Runs `cargo check --message-format json` and returns compilation errors 
 /// for the specified source file only.
-/// 
+///
 /// # Arguments
 /// * `source_file` - The path to the source file to check for errors
-/// 
+///
 /// # Returns
 /// A vector of error message strings for the specified source file
-/// 
+///
 /// # Panics
 /// Panics if the cargo command cannot be executed or if JSON parsing fails
 fn run_cargo_check(source_file: &str) -> Vec<String> {

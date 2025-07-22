@@ -65,4 +65,3 @@ Before each action - e.g. making LLM requests, renaming files, calling cargo che
 
 Have repeated primitive operations, like running cargo check, factored out into functions.
 
-Disable the warning that is caused by "#[warn(special_module_name)]"
