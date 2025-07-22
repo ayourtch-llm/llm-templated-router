@@ -1,0 +1,17 @@
+[package]
+name = "llm"
+version = "0.1.1"
+edition = "2024"
+
+authors = ["ubuntu"]
+
+[features]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+filetime = "0.2"
+regex = "*"
+tempfile = "*"

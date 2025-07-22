@@ -1,0 +1,13 @@
+[workspace]
+members = [
+  "llm",
+]
+resolver = "2"
+
+[profile.release]
+debug = true # debug symbols cost nothing
+# super slow # lto = true # do whole program optimization
+opt-level = "s" # try to generate small code
+overflow-checks = true # !!! Keep the overflows enabled
+
+
