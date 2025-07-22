@@ -1,11 +1,9 @@
-#[allow(special_module_name)]
 use std::env;
 use std::fs;
-use std::path::{Path};
-use std::process::{Command};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::time::SystemTime;
 use filetime::FileTime;
-use serde_json::Value;
 
 mod mylib;
 
@@ -55,7 +53,7 @@ fn main() {
     let first_compiler_errors = if output_path.exists() {
         run_cargo_check(output_file)
     } else {
-        eprintln!("No cargo check needed for non-existent file");
+        eprintln!("No cargo check");
         Vec::new()
     };
 
@@ -89,14 +87,18 @@ fn main() {
     fs::write(&resp_path_gen, &response)
         .unwrap_or_else(|_| panic!("Failed to write response file: {}", resp_path_gen));
 
+    
     eprintln!("Writing draft to: {}", draft_path);
     fs::write(&draft_path, &response)
         .unwrap_or_else(|_| panic!("Failed to write draft file: {}", draft_path));
+   
+    let orig_path = format!("{}.orig", output_file); 
+    fs::rename(output_file, &orig_path)
+            .unwrap_or_else(|_| panic!("Failed to move orig file to temp file"));
 
-    eprintln!("Writing to output file for cargo check");
-    fs::write(&output_path, &response)
-        .unwrap_or_else(|_| panic!("Failed to write output file: {}", output_file));
-
+    fs::write(&output_file, &response)
+        .unwrap_or_else(|_| panic!("Failed to write temporary file"));
+    
     let second_compiler_errors = run_cargo_check(&output_file);
 
     let eval_prompt = format!(
@@ -119,48 +121,43 @@ fn main() {
 
     eprintln!("Evaluation result: {}", trimmed);
 
-    match trimmed {
-        "First result is better." => {
-            eprintln!("First result is better");
-            if first_compiler_errors.is_empty() {
-                eprintln!("No compile errors, restoring original");
-                if Path::new(&draft_path).exists() {
-                    fs::rename(&draft_path, &rej_path)
-                        .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
-                }
-                let now = SystemTime::now();
-                filetime::set_file_mtime(output_file, FileTime::from_system_time(now))
-                    .expect("Failed to update mtime");
-            } else {
-                eprintln!("First result better but has compile errors");
-                if Path::new(&draft_path).exists() {
-                    fs::rename(&draft_path, &rej_path)
-                        .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
-                }
-                std::process::exit(1);
-            }
-        }
-        "The second implementation is better." => {
-            eprintln!("Second implementation is better");
-            fs::write(&output_path, &response)
-                .unwrap_or_else(|_| panic!("Failed to write output file"));
+    if trimmed == "First result is better." {
+        eprintln!("First result is better");
+        if first_compiler_errors.is_empty() {
+            eprintln!("No compile errors, restoring original");
+            fs::rename(&orig_path, output_file)
+                .unwrap_or_else(|_| panic!("Failed to move orig file to temp file"));
             if Path::new(&draft_path).exists() {
-                fs::remove_file(&draft_path)
-                    .unwrap_or_else(|_| panic!("Failed to remove draft file"));
+                fs::rename(&draft_path, &rej_path)
+                    .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
             }
-        }
-        _ => {
-            eprintln!("Unexpected evaluation response: {}", trimmed);
+            let now = SystemTime::now();
+            filetime::set_file_mtime(output_file, FileTime::from_system_time(now))
+                .expect("Failed to update mtime");
+        } else {
+            eprintln!("First result better but has compile errors");
             if Path::new(&draft_path).exists() {
                 fs::rename(&draft_path, &rej_path)
                     .unwrap_or_else(|_| panic!("Failed to rename rejected draft"));
             }
             std::process::exit(1);
         }
+    } else if trimmed == "The second implementation is better." {
+        eprintln!("Second implementation is better");
+        if Path::new(&draft_path).exists() {
+            fs::remove_file(&draft_path)
+                .unwrap_or_else(|_| panic!("Failed to remove draft file"));
+        }
+    } else {
+        eprintln!("Unexpected evaluation response: {}", trimmed);
+        std::process::exit(1);
     }
 
     eprintln!("Program completed successfully");
 }
+
+
+use serde_json::Value;
 
 /// Runs `cargo check --message-format json` and returns compilation errors 
 /// for the specified source file only.
@@ -174,6 +171,7 @@ fn main() {
 /// # Panics
 /// Panics if the cargo command cannot be executed or if JSON parsing fails
 fn run_cargo_check(source_file: &str) -> Vec<String> {
+    eprintln!("Running cargo check with file {}", source_file);
     // Execute cargo check with JSON output
     let output = Command::new("cargo")
         .args(&["check", "--message-format", "json"])
@@ -186,9 +184,6 @@ fn run_cargo_check(source_file: &str) -> Vec<String> {
 
     let mut errors = Vec::new();
     let source_path = Path::new(source_file);
-    let file_name = source_path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
     
     // Parse each line of JSON output
     for line in stdout.lines() {
@@ -204,37 +199,23 @@ fn run_cargo_check(source_file: &str) -> Vec<String> {
         if let Some(reason) = json.get("reason") {
             if reason == "compiler-message" {
                 if let Some(message) = json.get("message") {
-                    // Check if this is an error
-                    if let Some(level) = message.get("level").and_then(|l| l.as_str()) {
-                        if level == "error" {
-                            // Check if this message has spans (location information)
-                            if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
-                                let mut is_relevant = false;
-                                for span in spans {
-                                    if let Some(span_file) = span.get("file_name").and_then(|f| f.as_str()) {
-                                        let span_path = Path::new(span_file);
-                                        if span_path == source_path || 
-                                           span_path.file_name().map(|n| n.to_str()).flatten() == Some(file_name) {
-                                            is_relevant = true;
-                                            break;
-                                        }
-                                    }
-                                }
+                    // Check if this message has spans (location information)
+                    if let Some(spans) = message.get("spans").and_then(|s| s.as_array()) {
+                        for span in spans {
+                            if let Some(file_name) = span.get("file_name").and_then(|f| f.as_str()) {
+                                let span_path = Path::new(file_name);
                                 
-                                if is_relevant {
+                                // Check if this error is from our target source file
+                                if span_path == source_path || 
+                                   span_path.file_name() == source_path.file_name() {
+                                    
                                     // Extract the error message
                                     if let Some(rendered) = message.get("rendered").and_then(|r| r.as_str()) {
                                         errors.push(rendered.to_string());
                                     } else if let Some(msg_text) = message.get("message").and_then(|m| m.as_str()) {
                                         errors.push(msg_text.to_string());
                                     }
-                                }
-                            } else {
-                                // Handle messages without spans (global errors)
-                                if let Some(rendered) = message.get("rendered").and_then(|r| r.as_str()) {
-                                    errors.push(rendered.to_string());
-                                } else if let Some(msg_text) = message.get("message").and_then(|m| m.as_str()) {
-                                    errors.push(msg_text.to_string());
+                                    break; // Found matching file, no need to check other spans
                                 }
                             }
                         }
@@ -250,3 +231,5 @@ fn run_cargo_check(source_file: &str) -> Vec<String> {
     
     errors
 }
+
+
