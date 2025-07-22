@@ -6,7 +6,8 @@ It should look into both instruct/bin/ and src/bin/ subdirectories for the files
 
 Then it should store that value in current_num variable, and assign next_num value +1 that.
 
-After that, it should copy the llm-foo-<current_num>.md into llm-foo-<next_num>.md, and llm-foo-<current_num>.rs into llm-foo-<next_num>.rs in their respective directories, and perform git commit -m "first commit for llm-foo-<next_num>" for both files.
+After that, it should copy the llm-foo-<current_num>.md into llm-foo-<next_num>.md, and llm-foo-<current_num>.rs into llm-foo-<next_num>.rs in their respective directories, and perform git commit -m "first commit for llm-foo-<next_num>" for both files:
+add both files to a single commit, so that there is only one commit, not two.
 
 Do not use any markdown separators please.
 
