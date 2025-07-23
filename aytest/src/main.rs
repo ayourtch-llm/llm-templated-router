@@ -1,5 +1,6 @@
 fn main() {
     let mut primes = Vec::new();
+    let mut candidate = 2;
 
     while primes.len() < 100 {
         let mut is_prime = true;
