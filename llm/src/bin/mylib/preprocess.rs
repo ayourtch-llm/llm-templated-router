@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub fn preprocess(file_name: &str) -> String {
     preprocess_with_depth(file_name, 0)
