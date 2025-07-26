@@ -24,9 +24,16 @@ pub struct Message {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    pub function: ToolFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolFunction {
     pub name: String,
-    pub description: Option<String>,
-    pub input_schema: Option<Value>,
+    pub description: String,
+    pub parameters: Value,
 }
 
 impl Router {
@@ -80,7 +87,7 @@ impl Router {
 
         // 5. Web search tools
         if let Some(tools) = &request.tools {
-            if tools.iter().any(|t| t.name == "web_search") {
+            if tools.iter().any(|t| t.function.name == "web_search") {
                 if let Some(ref web_search) = self.config.router.web_search {
                     if !web_search.is_empty() {
                         return web_search.clone();
@@ -132,13 +139,9 @@ impl Router {
         // Tools
         if let Some(tools) = &request.tools {
             for tool in tools {
-                chars += tool.name.len();
-                if let Some(desc) = &tool.description {
-                    chars += desc.len();
-                }
-                if let Some(schema) = &tool.input_schema {
-                    chars += schema.to_string().len();
-                }
+                chars += tool.function.name.len();
+                chars += tool.function.description.len();
+                chars += tool.function.parameters.to_string().len();
             }
         }
 
