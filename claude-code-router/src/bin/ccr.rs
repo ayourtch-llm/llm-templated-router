@@ -3,6 +3,8 @@ use claude_code_router::config::load_config;
 use claude_code_router::server::Server;
 use std::process::{Command, Stdio};
 use std::env;
+use reqwest;
+use tokio::time::{sleep, Duration};
 
 #[derive(Parser)]
 #[command(name = "claude-code-router")]
@@ -67,17 +69,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Code { args } => {
             println!("🔍 Checking service status...");
-            // Basic check - in a real implementation, this would check if the service is running
-            println!("⚠️  Service status check not implemented - assuming service is running");
             
-            // Load config to get settings
-            let config = load_config().map_err(|e| {
-                eprintln!("❌ Failed to load configuration: {}", e);
-                std::process::exit(1);
-            }).unwrap();
+            // Check if service is running
+            let config = match load_config() {
+                Ok(config) => config,
+                Err(e) => {
+                    eprintln!("❌ Failed to load configuration: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            
+            let host = config.host.as_deref().unwrap_or("127.0.0.1:8080");
+            let health_url = format!("http://{}/health", host);
+            
+            let client = reqwest::Client::new();
+            let service_running = client.get(&health_url).send().await.is_ok();
+            
+            if !service_running {
+                println!("⚠️  Service not running, starting in background...");
+                
+                // Start server in background
+                let log_file = "/tmp/ccr.log";
+                env::set_var("RUST_LOG", "debug");
+                
+                let mut cmd = Command::new("nohup");
+                cmd.arg(std::env::current_exe().unwrap())
+                    .arg("start")
+                    .stdout(Stdio::from(std::fs::File::create(log_file).expect("Failed to create log file")))
+                    .stderr(Stdio::from(std::fs::File::create(log_file).expect("Failed to create log file")))
+                    .spawn()
+                    .expect("Failed to start server in background");
+                
+                println!("⏳ Waiting 3 seconds for server to start...");
+                sleep(Duration::from_secs(3)).await;
+                
+                // Verify server started
+                let service_running = client.get(&health_url).send().await.is_ok();
+                if !service_running {
+                    eprintln!("❌ Failed to start service in background");
+                    std::process::exit(1);
+                }
+                
+                println!("✅ Service started successfully in background");
+            }
             
             // Set environment variables
-            let host = config.host.as_deref().unwrap_or("127.0.0.1:8080");
             let base_url = format!("http://{}", host);
             env::set_var("ANTHROPIC_BASE_URL", &base_url);
             if let Some(api_key) = &config.apikey {
