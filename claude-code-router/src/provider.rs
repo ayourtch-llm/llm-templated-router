@@ -118,15 +118,18 @@ impl ProviderClient {
         if let Some(temperature) = claude_req.temperature {
             body["temperature"] = json!(temperature);
         }
-        if let Some(stream) = claude_req.stream {
-            body["stream"] = json!(stream);
-        }
+        // Always disable streaming for now - we don't handle streaming responses yet
+        body["stream"] = json!(false);
         if let Some(tools) = &transformed_tools {
             body["tools"] = json!(tools);
         }
         
         // Apply transformers to modify the request
         self.apply_transformers(&mut body, claude_req, provider)?;
+
+        // Debug: Log the complete request being sent to provider
+        log::debug!("Sending request to provider {} at {}", provider_name, url);
+        log::debug!("Complete request body: {}", serde_json::to_string_pretty(&body).unwrap_or_else(|_| format!("{:?}", body)));
 
         let req = self
             .client
@@ -175,21 +178,29 @@ impl ProviderClient {
             crate::config::TransformerUse::Simple(name) => {
                 match name.as_str() {
                     "openrouter" => {
-                        // OpenRouter transformer: Convert Claude format to OpenAI-compatible format
+                        // OpenRouter transformer: Ensure tools are in OpenAI format
                         // Don't add system field - Groq doesn't support it
                         if let Some(tools) = body.get("tools") {
                             let empty_vec = vec![];
                             let tools_array = tools.as_array().unwrap_or(&empty_vec);
                             let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
                                 let tool_obj = tool.as_object().unwrap();
-                                json!({
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_obj.get("name").unwrap_or(&json!("")),
-                                        "description": tool_obj.get("description").unwrap_or(&json!("")),
-                                        "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
-                                    }
-                                })
+                                
+                                // Check if tool is already in OpenAI format
+                                if tool_obj.get("type").and_then(|t| t.as_str()) == Some("function") {
+                                    // Already in OpenAI format, pass through
+                                    tool.clone()
+                                } else {
+                                    // Convert from Claude format to OpenAI format
+                                    json!({
+                                        "type": "function",
+                                        "function": {
+                                            "name": tool_obj.get("name").unwrap_or(&json!("")),
+                                            "description": tool_obj.get("description").unwrap_or(&json!("")),
+                                            "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
+                                        }
+                                    })
+                                }
                             }).collect();
                             body["tools"] = json!(openai_tools);
                         }
@@ -205,14 +216,22 @@ impl ProviderClient {
                             let tools_array = tools.as_array().unwrap_or(&empty_vec);
                             let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
                                 let tool_obj = tool.as_object().unwrap();
-                                json!({
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_obj.get("name").unwrap_or(&json!("")),
-                                        "description": tool_obj.get("description").unwrap_or(&json!("")),
-                                        "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
-                                    }
-                                })
+                                
+                                // Check if tool is already in OpenAI format
+                                if tool_obj.get("type").and_then(|t| t.as_str()) == Some("function") {
+                                    // Already in OpenAI format, pass through
+                                    tool.clone()
+                                } else {
+                                    // Convert from Claude format to OpenAI format
+                                    json!({
+                                        "type": "function",
+                                        "function": {
+                                            "name": tool_obj.get("name").unwrap_or(&json!("")),
+                                            "description": tool_obj.get("description").unwrap_or(&json!("")),
+                                            "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
+                                        }
+                                    })
+                                }
                             }).collect();
                             body["tools"] = json!(openai_tools);
                         }

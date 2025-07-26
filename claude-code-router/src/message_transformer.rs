@@ -1,6 +1,5 @@
 use serde_json::{Value, json, Map};
 use crate::router::{Message, ClaudeTool};
-use std::collections::HashMap;
 
 pub struct MessageTransformer;
 
