@@ -81,12 +81,24 @@ impl Server {
 }
 
 #[derive(Deserialize)]
-struct ClaudeRequest {
-    model: String,
-    messages: Vec<Message>,
-    system: Option<String>,
-    tools: Option<Vec<Tool>>,
-    thinking: Option<Value>,
+pub struct ClaudeRequest {
+    pub model: String,
+    pub messages: Vec<Message>,
+    #[serde(default)]
+    pub system: Option<Value>, // Can be string or array
+    #[serde(default)]
+    pub tools: Option<Vec<Tool>>,
+    #[serde(default)]
+    pub thinking: Option<Value>,
+    // Additional fields Claude Code sends
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(default)]
+    pub stream: Option<bool>,
+    #[serde(default)]
+    pub metadata: Option<Value>,
 }
 
 
@@ -168,11 +180,15 @@ async fn handle_claude_request(
         }
     };
 
+    // Debug: Log the incoming request body
+    let body_str = String::from_utf8_lossy(&bytes);
+    log::debug!("Incoming request body: {}", body_str);
+    
     let claude_req: Result<ClaudeRequest, _> = serde_json::from_slice(&bytes);
     let claude_req = match claude_req {
         Ok(req) => req,
         Err(e) => {
-            eprintln!("❌ Failed to parse JSON: {}", e);
+            log::error!("❌ Failed to parse JSON: {} | Body: {}", e, body_str);
             return Ok(Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "application/json")
@@ -182,11 +198,11 @@ async fn handle_claude_request(
     };
 
     let router_request = RouterRequest {
-        model: Some(claude_req.model),
-        messages: claude_req.messages,
-        system: claude_req.system.map(|s| serde_json::Value::String(s)),
-        tools: claude_req.tools,
-        thinking: claude_req.thinking.and_then(|v| v.as_bool()),
+        model: Some(claude_req.model.clone()),
+        messages: claude_req.messages.clone(),
+        system: claude_req.system.clone(), // Already a Value, no conversion needed
+        tools: claude_req.tools.clone(),
+        thinking: claude_req.thinking.clone().and_then(|v| v.as_bool()),
     };
 
     // Route the request
@@ -205,7 +221,7 @@ async fn handle_claude_request(
     log::info!("🧭 Routing request to: {}", route);
 
     // Forward to provider
-    match provider_client.send_request(&route, &router_request, &config).await {
+    match provider_client.send_claude_request(&route, &claude_req, &config).await {
         Ok(provider_response) => {
             Ok(Response::builder()
                 .status(StatusCode::OK)

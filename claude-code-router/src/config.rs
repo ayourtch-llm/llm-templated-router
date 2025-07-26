@@ -35,7 +35,7 @@ pub struct TransformerConfig {
 #[serde(untagged)]
 pub enum TransformerUse {
     Simple(String),
-    WithConfig(String, serde_json::Value),
+    WithOptions(Vec<serde_json::Value>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -19,10 +19,10 @@ Based on config.example.json, create these data structures:
 3. TransformerConfig struct with:
    - use_transformers: Vec<TransformerUse> (with #[serde(rename = "use")])
 
-4. TransformerUse enum:
-   - Simple(String) - for strings like "openrouter", "deepseek"
-   - WithConfig(String, serde_json::Value) - for arrays like ["maxtoken", {...}]
-   - Use #[serde(untagged)] to handle both formats
+4. TransformerUse enum to handle both simple strings and arrays with options:
+   - Simple(String) - for strings like "openrouter", "deepseek"  
+   - WithOptions(Vec<serde_json::Value>) - for arrays like ["maxtoken", {"max_tokens": 16384}]
+   - Use #[serde(untagged)] to automatically deserialize both formats
 
 5. RouterConfig struct with all possible routing fields:
    - default: String
