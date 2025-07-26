@@ -4,20 +4,22 @@ use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(rename = "Providers")]
     pub providers: Vec<Provider>,
+    #[serde(rename = "Router")]
     pub router: RouterConfig,
+    #[serde(rename = "APIKEY")]
     pub apikey: String,
+    #[serde(rename = "HOST")]
     pub host: String,
-    #[serde(default)]
+    #[serde(rename = "LOG", default)]
     pub log: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Provider {
     pub name: String,
-    #[serde(rename = "apiBaseUrl")]
     pub api_base_url: String,
-    #[serde(rename = "apiKey")]
     pub api_key: String,
     pub models: Vec<String>,
     pub transformer: Option<TransformerConfig>,
