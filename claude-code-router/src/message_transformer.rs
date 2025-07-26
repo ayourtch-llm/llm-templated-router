@@ -1,5 +1,6 @@
 use serde_json::{Value, json, Map};
 use crate::router::{Message, ClaudeTool};
+use std::collections::HashMap;
 
 pub struct MessageTransformer;
 
@@ -58,11 +59,17 @@ impl MessageTransformer {
     
     pub fn transform_tools_to_openai(tools: &[ClaudeTool]) -> Vec<Value> {
         tools.iter().map(|tool| {
+            let description = if tool.description.is_empty() {
+                ""
+            } else {
+                &tool.description
+            };
+            
             json!({
                 "type": "function",
                 "function": {
                     "name": tool.name,
-                    "description": tool.description,
+                    "description": description,
                     "parameters": tool.input_schema.clone()
                 }
             })
@@ -257,5 +264,19 @@ mod tests {
         assert_eq!(result[0]["type"], "function");
         assert_eq!(result[0]["function"]["name"], "search");
         assert_eq!(result[0]["function"]["parameters"]["type"], "object");
+    }
+    
+    #[test]
+    fn test_empty_description() {
+        let tools = vec![
+            ClaudeTool {
+                name: "test".to_string(),
+                description: "".to_string(),
+                input_schema: json!({"type": "object"})
+            }
+        ];
+        
+        let result = MessageTransformer::transform_tools_to_openai(&tools);
+        assert_eq!(result[0]["function"]["description"], "");
     }
 }

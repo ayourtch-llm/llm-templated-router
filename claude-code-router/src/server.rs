@@ -201,16 +201,30 @@ async fn handle_claude_request(
         }
     };
 
+    // Debug logging for successfully parsed request
+    log::debug!("Original tools: {:?}", claude_req.tools);
+    if let Some(tools) = &claude_req.tools {
+        log::debug!("Tools count: {}", tools.len());
+        for (i, tool) in tools.iter().enumerate() {
+            log::debug!("Tool {}: {}", i, serde_json::to_string_pretty(tool).unwrap_or_else(|_| format!("{:?}", tool)));
+        }
+    }
+
     let parsed_tools: Option<Vec<ClaudeTool>> = claude_req.tools.as_ref().map(|tools| {
-        tools.iter().filter_map(|tool| {
+        let parsed: Vec<ClaudeTool> = tools.iter().filter_map(|tool| {
             if let Ok(claude_tool) = serde_json::from_value::<ClaudeTool>(tool.clone()) {
                 Some(claude_tool)
             } else {
                 log::warn!("Failed to parse tool: {:?}", tool);
                 None
             }
-        }).collect()
+        }).collect();
+        
+        log::debug!("Successfully parsed {} Claude tools", parsed.len());
+        parsed
     });
+    
+    log::debug!("Final parsed_tools: {:?}", parsed_tools.as_ref().map(|tools| tools.len()));
 
     let router_request = RouterRequest {
         model: Some(claude_req.model.clone()),
@@ -237,23 +251,17 @@ async fn handle_claude_request(
     log::debug!("Original tools: {:?}", claude_req.tools);
     
     let transformed_messages = MessageTransformer::transform_messages_to_openai(&claude_req.messages);
-    let transformed_tools = match &claude_req.tools {
+    let transformed_tools = match &parsed_tools {
         Some(tools) => {
-            log::debug!("Transforming {} tools", tools.len());
-            // Convert parsed tools to MessageTransformer format
-            if let Some(parsed_tools) = &parsed_tools {
-                let result = MessageTransformer::transform_tools_to_openai(parsed_tools);
-                log::debug!("Transformed tools: {:?}", result);
-                Some(result)
-            } else {
-                log::debug!("No valid tools to transform");
-                None
-            }
+            log::debug!("Transforming {} parsed tools", tools.len());
+            let result = MessageTransformer::transform_tools_to_openai(tools);
+            log::debug!("Transformed tools: {:?}", result);
+            Some(result)
         },
         None => {
-            log::debug!("No tools to transform");
+            log::debug!("No parsed tools to transform");
             None
-        },
+        }
     };
 
     match provider_client.send_claude_request(

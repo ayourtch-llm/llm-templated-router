@@ -40,10 +40,14 @@ Create a message transformation module that converts Claude API message format t
 4. **Tool format transformation:**
 
    **transform_tools_to_openai(tools: &[ClaudeTool]) -> Vec<Value>:**
-   - Convert Claude tool format to OpenAI function calling format
+   - Convert Claude tool format to unified OpenAI function calling format
+   - CRITICAL: Must match TypeScript convertAnthropicToolsToUnified() exactly
    - Claude format: {"name": "...", "description": "...", "input_schema": {...}}
-   - OpenAI format: {"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}
-   - Rename input_schema to parameters
+   - Unified format: {"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}
+   - Map input_schema directly to parameters field (no nesting)
+   - Handle empty descriptions with empty string fallback: `if tool.description.is_empty() { "" } else { &tool.description }`
+   - Add debug logging: log each tool conversion and final count
+   - This conversion is essential for compatibility with models like moonshotai/kimi-k2-instruct
 
 5. **Content block handling:**
 
