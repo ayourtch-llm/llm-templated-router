@@ -139,7 +139,10 @@ impl ProviderClient {
         }
 
         let json: Value = resp.json().await?;
-        Ok(json)
+        
+        // Convert OpenAI response format to Claude format for compatibility
+        let claude_response = self.convert_openai_to_claude_format(json)?;
+        Ok(claude_response)
     }
     
     fn apply_transformers(
