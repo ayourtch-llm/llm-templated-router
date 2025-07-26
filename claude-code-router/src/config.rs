@@ -41,10 +41,14 @@ pub enum TransformerUse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RouterConfig {
     pub default: String,
-    pub background: String,
-    pub think: String,
-    #[serde(rename = "longContext")]
-    pub long_context: String,
+    #[serde(default)]
+    pub background: Option<String>,
+    #[serde(default)]
+    pub think: Option<String>,
+    #[serde(rename = "longContext", default)]
+    pub long_context: Option<String>,
+    #[serde(rename = "webSearch", default)]
+    pub web_search: Option<String>,
 }
 
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
@@ -55,9 +59,10 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
             providers: vec![],
             router: RouterConfig {
                 default: "".to_string(),
-                background: "".to_string(),
-                think: "".to_string(),
-                long_context: "".to_string(),
+                background: None,
+                think: None,
+                long_context: None,
+                web_search: None,
             },
             apikey: "".to_string(),
             host: "".to_string(),
