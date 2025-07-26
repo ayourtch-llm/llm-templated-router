@@ -8,10 +8,10 @@ pub struct Config {
     pub providers: Vec<Provider>,
     #[serde(rename = "Router")]
     pub router: RouterConfig,
-    #[serde(rename = "APIKEY")]
-    pub apikey: String,
-    #[serde(rename = "HOST")]
-    pub host: String,
+    #[serde(rename = "APIKEY", default)]
+    pub apikey: Option<String>,
+    #[serde(rename = "HOST", default)]
+    pub host: Option<String>,
     #[serde(rename = "LOG", default)]
     pub log: Option<bool>,
 }
@@ -64,8 +64,8 @@ pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
                 long_context: None,
                 web_search: None,
             },
-            apikey: "".to_string(),
-            host: "".to_string(),
+            apikey: None,
+            host: None,
             log: Some(false),
         };
         

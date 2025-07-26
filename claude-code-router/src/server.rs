@@ -21,7 +21,8 @@ impl Server {
     }
 
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let addr: SocketAddr = self.config.host.parse()?;
+        let host = self.config.host.as_deref().unwrap_or("0.0.0.0:8080");
+        let addr: SocketAddr = host.parse()?;
 
         let make_svc = make_service_fn(|_conn| async {
             Ok::<_, Infallible>(service_fn(router))
