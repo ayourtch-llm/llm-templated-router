@@ -12,8 +12,8 @@ Requirements:
 
 4. Implement these methods:
    - new(config: Config) -> Server
-   - start(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-   - stop(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+   - start(&mut self) -> Result<(), Box<dyn std::error::Error>>
+   - stop(&mut self) -> Result<(), Box<dyn std::error::Error>>
 
 5. The server should:
    - Parse host from Config.host field (format "host:port")
@@ -33,7 +33,7 @@ Requirements:
 
 8. Include basic tests using tokio::test
 
-9. Use proper error handling with Box<dyn std::error::Error + Send + Sync>
+9. Use proper error handling with Box<dyn std::error::Error>
 
 10. Server must be non-blocking and use graceful shutdown pattern
 

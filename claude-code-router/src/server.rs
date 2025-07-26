@@ -1,29 +1,11 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server as HyperServer};
 use tokio::sync::oneshot;
 
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub host: String,
-    pub port: u16,
-}
-
-impl Config {
-    pub fn new(host: impl Into<String>, port: u16) -> Self {
-        Self {
-            host: host.into(),
-            port,
-        }
-    }
-
-    pub fn addr(&self) -> String {
-        format!("{}:{}", self.host, self.port)
-    }
-}
+use crate::config::Config;
 
 pub struct Server {
     config: Config,
@@ -39,7 +21,7 @@ impl Server {
     }
 
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let addr: SocketAddr = self.config.addr().parse()?;
+        let addr: SocketAddr = self.config.host.parse()?;
 
         let make_svc = make_service_fn(|_conn| async {
             Ok::<_, Infallible>(service_fn(router))
@@ -100,15 +82,28 @@ mod tests {
     use hyper::Client;
 
     #[tokio::test]
-    async fn test_server_starts_and_responds() {
-        let config = Config::new("127.0.0.1", 0);
+    async fn test_server_health_check() {
+        let config = Config { host: "127.0.0.1:0".to_string() };
         let mut server = Server::new(config);
-
-        let config_clone = server.config.clone();
-        tokio::spawn(async move {
-            let _ = server.start().await;
+        
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let make_svc = make_service_fn(|_conn| async {
+            Ok::<_, Infallible>(service_fn(router))
         });
-
+        
+        let server = HyperServer::bind(&addr).serve(make_svc);
+        let addr = server.local_addr();
+        
+        tokio::spawn(async move {
+            let _ = server.await;
+        });
+        
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        let client = Client::new();
+        let uri: hyper::Uri = format!("http://{}/", addr).parse().unwrap();
+        let resp = client.get(uri).await.unwrap();
+        
+        assert_eq!(resp.status(), 200);
     }
 }
