@@ -4,35 +4,39 @@ Requirements:
 1. Import required modules:
    - Config from crate::config module
    - Router, RouterRequest, Message, Tool from crate::router module
+   - ProviderClient from crate::provider module
    - hyper components for HTTP handling
    - serde_json for JSON parsing
 
 2. Create a Server struct with fields:
    - config: Config
    - router: Router  
+   - provider_client: ProviderClient
    - shutdown_tx: Option<oneshot::Sender<()>>
 
 3. Implement these methods:
-   - new(config: Config) -> Server (initialize router with config.clone())
+   - new(config: Config) -> Server (initialize router and provider_client)
    - start(&mut self) -> Result<(), Box<dyn std::error::Error>>
    - stop(&mut self) -> Result<(), Box<dyn std::error::Error>>
 
 4. HTTP endpoint handling:
    - GET "/" and "/health" -> 200 OK with "OK" body (health checks)
-   - POST "/v1/messages" -> Claude API endpoint with routing logic
+   - POST "/v1/messages" -> Claude API endpoint with full request forwarding
    - Other routes -> 404 Not Found
 
 5. Claude API request processing:
    - Parse JSON request body 
    - Extract: model, messages, system, tools, thinking fields
    - Convert to RouterRequest struct
-   - Call router.route_request() to determine route
-   - Return JSON response with routing decision
+   - Call router.route_request() to determine target provider/model
+   - Use provider_client.send_request() to forward to actual LLM provider
+   - Return the provider's response directly to client
 
 6. Response formats:
    - Health checks: plain text "OK"
-   - Routing: JSON {"routed_to": "provider,model", "token_count": number}
-   - Errors: appropriate HTTP status codes with error messages
+   - Successful forwarding: Return provider's JSON response as-is
+   - Routing errors: JSON error messages with appropriate HTTP status codes
+   - Provider errors: Forward provider error responses
 
 7. Authentication middleware:
    - Check Authorization header or x-api-key header  
