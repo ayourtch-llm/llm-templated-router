@@ -78,7 +78,6 @@ impl ProviderClient {
         Ok(json)
     }
     
-    // New method to handle full Claude request with all fields
     pub async fn send_claude_request(
         &self,
         provider_route: &str,

@@ -16,29 +16,29 @@ impl OpenRouterTransformer {
 impl ProviderTransformer for OpenRouterTransformer {
     fn transform(&self, body: &mut Value, _claude_req: &ClaudeRequest) -> Result<(), Box<dyn Error>> {
         // Transform tools if present
-        if let Some(tools) = body.get("tools") {
-            let empty_vec = vec![];
-            let tools_array = tools.as_array().unwrap_or(&empty_vec);
-            let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
-                let tool_obj = tool.as_object().unwrap();
-                
-                // Check if tool is already in OpenAI format
-                if tool_obj.get("type").and_then(|t| t.as_str()) == Some("function") {
-                    // Already in OpenAI format, pass through
-                    tool.clone()
-                } else {
-                    // Convert from Claude format to OpenAI format
-                    json!({
-                        "type": "function",
-                        "function": {
-                            "name": tool_obj.get("name").unwrap_or(&json!("")),
-                            "description": tool_obj.get("description").unwrap_or(&json!("")),
-                            "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
+        if let Some(tools) = body.get_mut("tools") {
+            if let Some(tools_array) = tools.as_array_mut() {
+                for tool in tools_array {
+                    if let Some(tool_obj) = tool.as_object() {
+                        // Check if tool is already in OpenAI format
+                        if tool_obj.get("type").and_then(|t| t.as_str()) != Some("function") {
+                            // Convert from Claude format to OpenAI format
+                            let name = tool_obj.get("name").cloned().unwrap_or_else(|| json!(""));
+                            let description = tool_obj.get("description").cloned().unwrap_or_else(|| json!(""));
+                            let parameters = tool_obj.get("input_schema").cloned().unwrap_or_else(|| json!({}));
+                            
+                            *tool = json!({
+                                "type": "function",
+                                "function": {
+                                    "name": name,
+                                    "description": description,
+                                    "parameters": parameters
+                                }
+                            });
                         }
-                    })
+                    }
                 }
-            }).collect();
-            body["tools"] = json!(openai_tools);
+            }
         }
         
         // Note: system field is intentionally omitted for Groq compatibility
@@ -127,5 +127,57 @@ mod tests {
         
         // Should pass through unchanged
         assert_eq!(body["tools"], original_tools);
+    }
+    
+    #[test]
+    fn test_empty_tools_array() {
+        let transformer = OpenRouterTransformer::new();
+        let claude_req = ClaudeRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            system: None,
+            tools: None,
+            thinking: None,
+            max_tokens: None,
+            temperature: None,
+            stream: None,
+            metadata: None,
+        };
+        
+        let mut body = json!({
+            "model": "test",
+            "messages": [],
+            "tools": []
+        });
+        
+        transformer.transform(&mut body, &claude_req).unwrap();
+        
+        let tools = body["tools"].as_array().unwrap();
+        assert!(tools.is_empty());
+    }
+    
+    #[test]
+    fn test_missing_tools_field() {
+        let transformer = OpenRouterTransformer::new();
+        let claude_req = ClaudeRequest {
+            model: "test".to_string(),
+            messages: vec![],
+            system: None,
+            tools: None,
+            thinking: None,
+            max_tokens: None,
+            temperature: None,
+            stream: None,
+            metadata: None,
+        };
+        
+        let mut body = json!({
+            "model": "test",
+            "messages": []
+        });
+        
+        transformer.transform(&mut body, &claude_req).unwrap();
+        
+        assert!(body.get("tools").is_none());
     }
 }
