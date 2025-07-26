@@ -88,7 +88,7 @@ pub struct ClaudeRequest {
     #[serde(default)]
     pub system: Option<Value>,
     #[serde(default)]
-    pub tools: Option<Vec<Value>>, // Changed to handle any tool format
+    pub tools: Option<Vec<Value>>,
     #[serde(default)]
     pub thinking: Option<Value>,
     #[serde(default)]
@@ -187,7 +187,6 @@ async fn handle_claude_request(
         Err(e) => {
             log::error!("❌ Failed to parse JSON: {} | Body: {}", e, body_str);
             
-            // Try to parse as raw JSON to see the tools structure
             if let Ok(raw_json) = serde_json::from_slice::<serde_json::Value>(&bytes) {
                 if let Some(tools) = raw_json.get("tools") {
                     log::debug!("Raw tools from Claude Code CLI: {:?}", tools);
@@ -202,7 +201,6 @@ async fn handle_claude_request(
         }
     };
 
-    // Convert raw JSON tools to ClaudeTool format for routing
     let parsed_tools: Option<Vec<ClaudeTool>> = claude_req.tools.as_ref().map(|tools| {
         tools.iter().filter_map(|tool| {
             if let Ok(claude_tool) = serde_json::from_value::<ClaudeTool>(tool.clone()) {
@@ -218,7 +216,7 @@ async fn handle_claude_request(
         model: Some(claude_req.model.clone()),
         messages: claude_req.messages.clone(),
         system: claude_req.system.clone(),
-        tools: parsed_tools,
+        tools: parsed_tools.clone(),
         thinking: claude_req.thinking.clone().and_then(|v| v.as_bool()),
     };
 
@@ -242,9 +240,15 @@ async fn handle_claude_request(
     let transformed_tools = match &claude_req.tools {
         Some(tools) => {
             log::debug!("Transforming {} tools", tools.len());
-            let result = MessageTransformer::transform_tools_to_openai(tools);
-            log::debug!("Transformed tools: {:?}", result);
-            Some(result)
+            // Convert parsed tools to MessageTransformer format
+            if let Some(parsed_tools) = &parsed_tools {
+                let result = MessageTransformer::transform_tools_to_openai(parsed_tools);
+                log::debug!("Transformed tools: {:?}", result);
+                Some(result)
+            } else {
+                log::debug!("No valid tools to transform");
+                None
+            }
         },
         None => {
             log::debug!("No tools to transform");

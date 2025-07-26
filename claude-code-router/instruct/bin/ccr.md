@@ -5,6 +5,7 @@ Requirements:
    - use claude_code_router::config::{load_config, Config}
    - use claude_code_router::server::Server
    - use std::process::Command for executing claude CLI
+   - use std::fs for PID file operations
    - use reqwest for HTTP health checks
    - use tokio::time for delays
    - use std::env for setting environment variables
@@ -14,19 +15,30 @@ Requirements:
    - Change fn main() to async fn main() -> Result<(), Box<dyn std::error::Error>>
 
 3. Commands to implement:
-   - start: Load config, create server, start HTTP service
-   - stop: Print message about stop functionality (process management TBD)
-   - status: Print basic status message (process checking TBD)
+   - start: Load config, create server, start HTTP service, write PID to /tmp/ccr.pid
+   - stop: Stop the running server by reading PID from /tmp/ccr.pid and killing the process
+   - status: Check if service is running using health check and PID file
    - code <args>: Execute Claude Code CLI through the router
    - NOTE: Do not implement a help command - clap provides this automatically
 
 4. Start command implementation:
    - Load config using load_config()
+   - Write current process PID to /tmp/ccr.pid using std::process::id()
    - Create Server::new(config)
    - Call server.start().await
    - Handle errors gracefully with user-friendly messages
+   - Clean up PID file on exit
 
-5. Code command implementation:
+5. Stop command implementation:
+   - Read PID from /tmp/ccr.pid
+   - If PID file exists and process is running:
+     - Kill the process using std::process::Command::new("kill").arg(pid)
+     - Remove the PID file
+     - Print success message
+   - If no PID file or process not running:
+     - Print "No running service found" message
+
+6. Code command implementation:
    - Check if service is running using HTTP health check to localhost:8080/health
    - If service is NOT running:
      - Print message about starting service
@@ -42,12 +54,12 @@ Requirements:
    - Execute "claude" command with remaining arguments
    - Pass through exit code
 
-6. Use clap for argument parsing:
+7. Use clap for argument parsing:
    - Use #[clap(trailing_var_arg = true)] for code command args
    - Handle remaining arguments after "code" subcommand
 
-7. Add proper error handling and startup messages with emojis
+8. Add proper error handling and startup messages with emojis
 
-8. Keep the process running when server starts
+9. Keep the process running when server starts
 
 This integrates the CLI with the server module and provides Claude Code execution through the router.

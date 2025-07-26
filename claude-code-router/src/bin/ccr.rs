@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use claude_code_router::config::load_config;
 use claude_code_router::server::Server;
 use std::process::{Command, Stdio};
+use std::fs;
 use std::env;
 use reqwest;
 use tokio::time::{sleep, Duration};
@@ -43,6 +44,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 e
             })?;
             
+            let pid = std::process::id();
+            if let Err(e) = fs::write("/tmp/ccr.pid", pid.to_string()) {
+                eprintln!("❌ Failed to write PID file: {}", e);
+                return Err(e.into());
+            }
+            
             let mut server = Server::new(config);
             
             println!("✅ Configuration loaded successfully");
@@ -58,14 +65,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Keep the process running
             tokio::signal::ctrl_c().await?;
             println!("\n👋 Shutting down gracefully...");
+            
+            // Clean up PID file
+            let _ = fs::remove_file("/tmp/ccr.pid");
         }
         Commands::Stop => {
             println!("⏹️  Stopping claude-code-router service...");
-            println!("ℹ️  Process management functionality is TBD");
+            
+            match fs::read_to_string("/tmp/ccr.pid") {
+                Ok(pid_str) => {
+                    match pid_str.trim().parse::<u32>() {
+                        Ok(pid) => {
+                            let status = Command::new("kill")
+                                .arg(pid.to_string())
+                                .status();
+                            
+                            match status {
+                                Ok(status) if status.success() => {
+                                    let _ = fs::remove_file("/tmp/ccr.pid");
+                                    println!("✅ Service stopped successfully");
+                                }
+                                _ => {
+                                    println!("❌ Failed to stop process or process not found");
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            println!("❌ Invalid PID in file");
+                        }
+                    }
+                }
+                Err(_) => {
+                    println!("ℹ️  No running service found");
+                }
+            }
         }
         Commands::Status => {
-            println!("📊 Service status checking functionality is TBD");
-            println!("Current status: configuration available but process monitoring not implemented");
+            println!("📊 Checking service status...");
+            
+            match fs::read_to_string("/tmp/ccr.pid") {
+                Ok(pid_str) => {
+                    match pid_str.trim().parse::<u32>() {
+                        Ok(pid) => {
+                            let client = reqwest::Client::new();
+                            let config = match load_config() {
+                                Ok(config) => config,
+                                Err(_) => {
+                                    println!("❌ Failed to load configuration for health check");
+                                    return Ok(());
+                                }
+                            };
+                            let host = config.host.as_deref().unwrap_or("127.0.0.1:8080");
+                            let health_url = format!("http://{}/health", host);
+                            
+                            match client.get(&health_url).send().await {
+                                Ok(_) => {
+                                    println!("✅ Service is running (PID: {})", pid);
+                                }
+                                Err(_) => {
+                                    println!("⚠️  Service is not responding (PID: {})", pid);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            println!("❌ Invalid PID in file");
+                        }
+                    }
+                }
+                Err(_) => {
+                    println!("ℹ️  No running service found");
+                }
+            }
         }
         Commands::Code { args } => {
             println!("🔍 Checking service status...");
