@@ -178,8 +178,7 @@ impl ProviderClient {
                         // OpenRouter transformer: Convert Claude format to OpenAI-compatible format
                         // Don't add system field - Groq doesn't support it
                         if let Some(tools) = body.get("tools") {
-                            let empty_vec = vec![];
-                            let tools_array = tools.as_array().unwrap_or(&empty_vec);
+                            let tools_array = tools.as_array().unwrap_or(&vec![]);
                             let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
                                 let tool_obj = tool.as_object().unwrap();
                                 json!({
@@ -201,8 +200,7 @@ impl ProviderClient {
                             body["system"] = system.clone();
                         }
                         if let Some(tools) = body.get("tools") {
-                            let empty_vec = vec![];
-                            let tools_array = tools.as_array().unwrap_or(&empty_vec);
+                            let tools_array = tools.as_array().unwrap_or(&vec![]);
                             let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
                                 let tool_obj = tool.as_object().unwrap();
                                 json!({

@@ -8,7 +8,7 @@ Requirements:
 2. Create a ProviderClient struct with methods:
    - new() -> ProviderClient  
    - send_request(&self, provider_route: &str, request: &RouterRequest, config: &Config) -> Result<serde_json::Value, Box<dyn std::error::Error>>
-   - send_claude_request(&self, provider_route: &str, claude_req: &ClaudeRequest, config: &Config) -> Result<serde_json::Value, Box<dyn std::error::Error>>
+   - send_claude_request(&self, provider_route: &str, claude_req: &ClaudeRequest, config: &Config, transformed_messages: Vec<serde_json::Value>, transformed_tools: Option<Vec<serde_json::Value>>) -> Result<serde_json::Value, Box<dyn std::error::Error>>
    - apply_transformers(&self, body: &mut serde_json::Value, claude_req: &ClaudeRequest, provider: &Provider) -> Result<(), Box<dyn std::error::Error>>
    - convert_openai_to_claude_format(&self, openai_response: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>>
 
@@ -19,10 +19,13 @@ Requirements:
    - Return error if provider not found
 
 4. Request transformation:
-   - Convert RouterRequest to provider-specific format
+   - Use pre-transformed messages and tools from MessageTransformer (passed as parameters)
+   - Create OpenAI-compatible request body using transformed_messages and transformed_tools
+   - Apply provider-specific transformers based on config (openrouter, gemini, maxtoken, etc.)
    - Handle different provider API formats (OpenAI-compatible vs native)
    - Set correct headers (Authorization, Content-Type, User-Agent)
    - Use provider's api_base_url and api_key from config
+   - Build request body: {"model": model, "messages": transformed_messages, "tools": transformed_tools}
 
 5. HTTP request handling:
    - Use reqwest for async HTTP requests
