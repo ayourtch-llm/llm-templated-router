@@ -7,31 +7,6 @@ pub struct Router {
     config: Config,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Config {
-    pub router: RouterConfig,
-    pub providers: HashMap<String, ProviderConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RouterConfig {
-    pub default: String,
-    pub long_context: String,
-    pub background: String,
-    pub think: String,
-    pub web_search: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ProviderConfig {
-    pub models: HashMap<String, ModelConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ModelConfig {
-    pub max_tokens: Option<u32>,
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RouterRequest {
     pub model: Option<String>,
@@ -76,25 +51,41 @@ impl Router {
         // 2. Token count check
         let token_count = self.estimate_tokens(request);
         if token_count > 60_000 {
-            return self.config.router.long_context.clone();
+            if let Some(ref long_context) = self.config.router.long_context {
+                if !long_context.is_empty() {
+                    return long_context.clone();
+                }
+            }
         }
 
         // 3. Background routing for haiku
         if let Some(model) = &request.model {
             if model.contains("claude-3-5-haiku") {
-                return self.config.router.background.clone();
+                if let Some(ref background) = self.config.router.background {
+                    if !background.is_empty() {
+                        return background.clone();
+                    }
+                }
             }
         }
 
         // 4. Thinking mode
         if request.thinking.unwrap_or(false) {
-            return self.config.router.think.clone();
+            if let Some(ref think) = self.config.router.think {
+                if !think.is_empty() {
+                    return think.clone();
+                }
+            }
         }
 
         // 5. Web search tools
         if let Some(tools) = &request.tools {
             if tools.iter().any(|t| t.name == "web_search") {
-                return self.config.router.web_search.clone();
+                if let Some(ref web_search) = self.config.router.web_search {
+                    if !web_search.is_empty() {
+                        return web_search.clone();
+                    }
+                }
             }
         }
 
@@ -112,6 +103,19 @@ impl Router {
                 Value::Array(arr) => {
                     for item in arr {
                         if let Some(s) = item.as_str() {
+                            chars += s.len();
+                        } else if let Value::Object(obj) = item {
+                            if let Some(content) = obj.get("content") {
+                                if let Some(s) = content.as_str() {
+                                    chars += s.len();
+                                }
+                            }
+                        }
+                    }
+                }
+                Value::Object(obj) => {
+                    if let Some(content) = obj.get("content") {
+                        if let Some(s) = content.as_str() {
                             chars += s.len();
                         }
                     }
