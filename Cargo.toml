@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "llm",
+  "claude-code-router",
 ]
 resolver = "2"
 
