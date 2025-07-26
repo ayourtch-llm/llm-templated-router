@@ -20,7 +20,7 @@ impl Server {
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let addr: SocketAddr = self.config.host.parse()?;
 
         let make_svc = make_service_fn(|_conn| async {
@@ -46,7 +46,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(tx) = self.shutdown_tx.take() {
             tx.send(()).map_err(|_| "Shutdown signal failed")?;
             println!("🛑 Server is shutting down gracefully...");

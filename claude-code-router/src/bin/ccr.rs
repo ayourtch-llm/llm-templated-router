@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use claude_code_router::config::{load_config, Config};
+use claude_code_router::config::load_config;
 use claude_code_router::server::Server;
 
 #[derive(Parser)]
@@ -18,8 +18,6 @@ enum Commands {
     Stop,
     /// Show service status
     Status,
-    /// Show help text
-    Help,
 }
 
 #[tokio::main]
@@ -35,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 e
             })?;
             
-            let server = Server::new(config);
+            let mut server = Server::new(config);
             
             println!("✅ Configuration loaded successfully");
             println!("🌐 Starting HTTP service...");
@@ -58,17 +56,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Status => {
             println!("📊 Service status checking functionality is TBD");
             println!("Current status: configuration available but process monitoring not implemented");
-        }
-        Commands::Help => {
-            println!("claude-code-router CLI");
-            println!("USAGE:");
-            println!("  claude-code-router <COMMAND>");
-            println!();
-            println!("COMMANDS:");
-            println!("  start   Start the router service");
-            println!("  stop    Stop the router service");
-            println!("  status  Show service status");
-            println!("  help    Show help text");
         }
     }
     
