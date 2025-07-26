@@ -1,40 +1,50 @@
-Create a basic HTTP server module for the claude-code-router that integrates with existing config module.
+Create an HTTP server module for the claude-code-router that integrates with config and routing modules.
 
 Requirements:
-1. Import the Config struct from crate::config module (not define a new one)
+1. Import required modules:
+   - Config from crate::config module
+   - Router, RouterRequest, Message, Tool from crate::router module
+   - hyper components for HTTP handling
+   - serde_json for JSON parsing
 
-2. Create a Server struct that can:
-   - Start HTTP server on specified host and port from Config.host field
-   - Handle shutdown gracefully using tokio oneshot channels
-   - Accept configuration from existing Config struct
+2. Create a Server struct with fields:
+   - config: Config
+   - router: Router  
+   - shutdown_tx: Option<oneshot::Sender<()>>
 
-3. Use hyper 0.14 for HTTP server with tokio runtime
-
-4. Implement these methods:
-   - new(config: Config) -> Server
+3. Implement these methods:
+   - new(config: Config) -> Server (initialize router with config.clone())
    - start(&mut self) -> Result<(), Box<dyn std::error::Error>>
    - stop(&mut self) -> Result<(), Box<dyn std::error::Error>>
 
-5. The server should:
-   - Parse host from Config.host field (format "host:port")
-   - Handle basic HTTP requests (GET, POST) 
-   - Return 200 OK with "OK" body for health checks on "/"
-   - Return 404 for other routes
-   - Print startup/shutdown messages with emojis
-
-6. Server struct fields:
-   - config: Config
-   - shutdown_tx: Option<oneshot::Sender<()>>
-
-7. Include async router function that handles:
-   - GET / -> 200 OK
-   - POST / -> 200 OK  
+4. HTTP endpoint handling:
+   - GET "/" and "/health" -> 200 OK with "OK" body (health checks)
+   - POST "/v1/messages" -> Claude API endpoint with routing logic
    - Other routes -> 404 Not Found
 
-8. Include basic tests using tokio::test
+5. Claude API request processing:
+   - Parse JSON request body 
+   - Extract: model, messages, system, tools, thinking fields
+   - Convert to RouterRequest struct
+   - Call router.route_request() to determine route
+   - Return JSON response with routing decision
 
-9. Use proper error handling with Box<dyn std::error::Error>
+6. Response formats:
+   - Health checks: plain text "OK"
+   - Routing: JSON {"routed_to": "provider,model", "token_count": number}
+   - Errors: appropriate HTTP status codes with error messages
 
-10. Server must be non-blocking and use graceful shutdown pattern
+7. Authentication middleware:
+   - Check Authorization header or x-api-key header  
+   - Validate against config.apikey if set
+   - Skip auth for health endpoints
+   - Return 401 for invalid/missing API keys
 
-This integrates with the existing config.rs module and serves as foundation for routing logic.
+8. Error handling:
+   - Graceful JSON parsing error handling
+   - Proper HTTP status codes (400, 401, 404, 500)
+   - Log errors and routing decisions
+
+9. Use hyper 0.14 with proper async/await patterns and graceful shutdown
+
+This creates a Claude API-compatible router that processes requests and shows routing decisions.
