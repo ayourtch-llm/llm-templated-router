@@ -8,7 +8,7 @@ use serde_json::Value;
 use tokio::sync::oneshot;
 
 use crate::config::Config;
-use crate::router::{Router, RouterRequest, Message, Tool};
+use crate::router::{Router, RouterRequest, Message, ClaudeTool};
 use crate::provider::ProviderClient;
 
 pub struct Server {
@@ -87,7 +87,7 @@ pub struct ClaudeRequest {
     #[serde(default)]
     pub system: Option<Value>, // Can be string or array
     #[serde(default)]
-    pub tools: Option<Vec<Tool>>,
+    pub tools: Option<Vec<ClaudeTool>>,
     #[serde(default)]
     pub thinking: Option<Value>,
     // Additional fields Claude Code sends

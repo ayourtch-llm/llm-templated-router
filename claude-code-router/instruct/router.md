@@ -12,12 +12,16 @@ Requirements:
    - model: Option<String>
    - messages: Vec<Message> 
    - system: Option<serde_json::Value>
-   - tools: Option<Vec<Tool>>
+   - tools: Option<Vec<ClaudeTool>>
    - thinking: Option<bool>
 
 4. Create supporting structs:
    - Message with role: String, content: serde_json::Value
-   - Tool with name: String, description: Option<String>, input_schema: Option<serde_json::Value>
+   - ClaudeTool with exact Claude API format:
+     - name: String (required)
+     - description: String (required) 
+     - input_schema: serde_json::Value (required)
+   - IMPORTANT: ClaudeTool matches Claude Code CLI format, NOT OpenAI format (no "type" or "function" fields)
 
 5. Implement routing logic that mirrors the TypeScript version:
    - If model contains "," return it directly (provider,model format)
@@ -25,7 +29,7 @@ Requirements:
    - Route to config.router.long_context if token count > 60000 and it exists
    - Route to config.router.background for claude-3-5-haiku models if it exists
    - Route to config.router.think if thinking=true and it exists
-   - Route to config.router.web_search if tools contain web_search type and it exists
+   - Route to config.router.web_search if tools contain names starting with "web_search" and it exists
    - Otherwise use config.router.default
 
 6. Token counting logic (approximate):

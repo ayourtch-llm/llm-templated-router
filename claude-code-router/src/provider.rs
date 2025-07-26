@@ -1,8 +1,9 @@
 use serde_json::{json, Value};
 use std::time::Duration;
 
-use crate::config::Config;
+use crate::config::{Config, Provider};
 use crate::router::RouterRequest;
+use crate::server::ClaudeRequest;
 
 #[derive(Clone)]
 pub struct ProviderClient {
@@ -80,7 +81,7 @@ impl ProviderClient {
     pub async fn send_claude_request(
         &self,
         provider_route: &str,
-        claude_req: &crate::server::ClaudeRequest,
+        claude_req: &ClaudeRequest,
         config: &Config,
     ) -> Result<Value, Box<dyn std::error::Error>> {
         // 1. Parse route
@@ -148,8 +149,8 @@ impl ProviderClient {
     fn apply_transformers(
         &self,
         body: &mut Value,
-        claude_req: &crate::server::ClaudeRequest,
-        provider: &crate::config::Provider,
+        claude_req: &ClaudeRequest,
+        provider: &Provider,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(transformer_config) = &provider.transformer {
             for transformer_use in &transformer_config.use_transformers {
@@ -162,7 +163,7 @@ impl ProviderClient {
     fn apply_transformer_use(
         &self,
         body: &mut Value,
-        claude_req: &crate::server::ClaudeRequest,
+        claude_req: &ClaudeRequest,
         transformer_use: &crate::config::TransformerUse,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match transformer_use {
@@ -172,7 +173,17 @@ impl ProviderClient {
                         // OpenRouter transformer: Convert Claude format to OpenAI-compatible format
                         // Don't add system field - Groq doesn't support it
                         if let Some(tools) = &claude_req.tools {
-                            body["tools"] = json!(tools);
+                            let openai_tools: Vec<Value> = tools.iter().map(|tool| {
+                                json!({
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool.name,
+                                        "description": tool.description,
+                                        "parameters": tool.input_schema
+                                    }
+                                })
+                            }).collect();
+                            body["tools"] = json!(openai_tools);
                         }
                         // Note: system field is intentionally omitted for Groq compatibility
                     }
@@ -182,7 +193,17 @@ impl ProviderClient {
                             body["system"] = system.clone();
                         }
                         if let Some(tools) = &claude_req.tools {
-                            body["tools"] = json!(tools);
+                            let openai_tools: Vec<Value> = tools.iter().map(|tool| {
+                                json!({
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool.name,
+                                        "description": tool.description,
+                                        "parameters": tool.input_schema
+                                    }
+                                })
+                            }).collect();
+                            body["tools"] = json!(openai_tools);
                         }
                     }
                     _ => {
@@ -212,5 +233,91 @@ impl ProviderClient {
             }
         }
         Ok(())
+    }
+    
+    pub fn convert_openai_to_claude_format(&self, openai_response: Value) -> Result<Value, Box<dyn std::error::Error>> {
+        let mut claude_response = json!({
+            "type": "message",
+            "role": "assistant",
+            "content": []
+        });
+        
+        // Handle choices
+        if let Some(choices) = openai_response.get("choices").and_then(|v| v.as_array()) {
+            if let Some(first_choice) = choices.first() {
+                // Handle message content
+                if let Some(message) = first_choice.get("message") {
+                    if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
+                        claude_response["content"] = json!([{
+                            "type": "text",
+                            "text": content
+                        }]);
+                    }
+                    
+                    // Handle tool calls
+                    if let Some(tool_calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
+                        let mut content_blocks = vec![];
+                        
+                        // Add text content if exists
+                        if let Some(text) = message.get("content").and_then(|v| v.as_str()) {
+                            if !text.is_empty() {
+                                content_blocks.push(json!({
+                                    "type": "text",
+                                    "text": text
+                                }));
+                            }
+                        }
+                        
+                        // Convert tool calls to Claude format
+                        for tool_call in tool_calls {
+                            if let (Some(id), Some(tool_type), Some(function)) = (
+                                tool_call.get("id").and_then(|v| v.as_str()),
+                                tool_call.get("type").and_then(|v| v.as_str()),
+                                tool_call.get("function")
+                            ) {
+                                if tool_type == "function" {
+                                    let name = function.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                    let arguments = function.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                                    
+                                    content_blocks.push(json!({
+                                        "type": "tool_use",
+                                        "id": id,
+                                        "name": name,
+                                        "input": serde_json::from_str::<Value>(arguments).unwrap_or(json!({}))
+                                    }));
+                                }
+                            }
+                        }
+                        
+                        claude_response["content"] = json!(content_blocks);
+                    }
+                }
+                
+                // Handle finish reason
+                if let Some(finish_reason) = first_choice.get("finish_reason").and_then(|v| v.as_str()) {
+                    let mapped_reason = match finish_reason {
+                        "stop" => "end_turn",
+                        "length" => "max_tokens",
+                        "tool_calls" => "tool_use",
+                        _ => finish_reason
+                    };
+                    claude_response["stop_reason"] = json!(mapped_reason);
+                }
+            }
+        }
+        
+        // Handle usage
+        if let Some(usage) = openai_response.get("usage") {
+            let mut usage_map = json!({});
+            if let Some(prompt_tokens) = usage.get("prompt_tokens") {
+                usage_map["input_tokens"] = prompt_tokens.clone();
+            }
+            if let Some(completion_tokens) = usage.get("completion_tokens") {
+                usage_map["output_tokens"] = completion_tokens.clone();
+            }
+            claude_response["usage"] = usage_map;
+        }
+        
+        Ok(claude_response)
     }
 }

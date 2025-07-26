@@ -1,3 +1,4 @@
+use log;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::config::Config;
@@ -12,7 +13,7 @@ pub struct RouterRequest {
     pub model: Option<String>,
     pub messages: Vec<Message>,
     pub system: Option<Value>,
-    pub tools: Option<Vec<Tool>>,
+    pub tools: Option<Vec<ClaudeTool>>,
     pub thinking: Option<bool>,
 }
 
@@ -23,17 +24,10 @@ pub struct Message {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tool {
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    pub function: ToolFunction,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolFunction {
+pub struct ClaudeTool {
     pub name: String,
     pub description: String,
-    pub parameters: Value,
+    pub input_schema: Value,
 }
 
 impl Router {
@@ -87,7 +81,7 @@ impl Router {
 
         // 5. Web search tools
         if let Some(tools) = &request.tools {
-            if tools.iter().any(|t| t.function.name == "web_search") {
+            if tools.iter().any(|t| t.name.starts_with("web_search")) {
                 if let Some(ref web_search) = self.config.router.web_search {
                     if !web_search.is_empty() {
                         return web_search.clone();
@@ -139,9 +133,9 @@ impl Router {
         // Tools
         if let Some(tools) = &request.tools {
             for tool in tools {
-                chars += tool.function.name.len();
-                chars += tool.function.description.len();
-                chars += tool.function.parameters.to_string().len();
+                chars += tool.name.len();
+                chars += tool.description.len();
+                chars += tool.input_schema.to_string().len();
             }
         }
 

@@ -25,11 +25,21 @@ Requirements:
    - Other routes -> 404 Not Found
 
 5. Claude API request processing:
-   - Parse JSON request body 
-   - Extract: model, messages, system, tools, thinking fields
-   - Convert to RouterRequest struct
+   - Define ClaudeRequest struct that handles Claude Code CLI's exact request format:
+     - model: String (required)
+     - messages: Vec<Message> (required, where Message.content is Value to handle both string and array formats)
+     - system: Option<Value> (Claude system prompt, can be string or array of content blocks)
+     - tools: Option<Vec<Value>> (Claude-format tools: {"name": "...", "description": "...", "input_schema": {...}})
+     - thinking: Option<Value> (Claude thinking mode)
+     - max_tokens: Option<u32>
+     - temperature: Option<f32>
+     - stream: Option<bool>
+     - metadata: Option<Value>
+   - IMPORTANT: Tools are in Claude format (name/description/input_schema), not OpenAI format (type/function)
+   - Parse JSON with proper error handling for missing fields using #[serde(default)]
+   - Convert to RouterRequest struct for routing logic
    - Call router.route_request() to determine target provider/model
-   - Use provider_client.send_request() to forward to actual LLM provider
+   - Use provider_client.send_claude_request() with full ClaudeRequest
    - Return the provider's response directly to client
 
 6. Response formats:
