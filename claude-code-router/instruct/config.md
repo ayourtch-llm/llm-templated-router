@@ -5,8 +5,8 @@ Based on config.example.json, create these data structures:
 1. Config struct with these exact fields and serde renames:
    - providers: Vec<Provider> (with #[serde(rename = "Providers")])
    - router: RouterConfig (with #[serde(rename = "Router")])
-   - apikey: String (with #[serde(rename = "APIKEY")])
-   - host: String (with #[serde(rename = "HOST")])
+   - apikey: Option<String> (with #[serde(rename = "APIKEY", default)])
+   - host: Option<String> (with #[serde(rename = "HOST", default)])
    - log: Option<bool> (with #[serde(rename = "LOG", default)])
 
 2. Provider struct with these exact fields:
