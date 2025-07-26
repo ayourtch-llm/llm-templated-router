@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(rename = "Providers")]
     pub providers: Vec<Provider>,
@@ -16,7 +16,7 @@ pub struct Config {
     pub log: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Provider {
     pub name: String,
     pub api_base_url: String,
@@ -25,20 +25,20 @@ pub struct Provider {
     pub transformer: Option<TransformerConfig>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransformerConfig {
     #[serde(rename = "use")]
     pub use_transformers: Vec<TransformerUse>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TransformerUse {
     Simple(String),
     WithConfig(String, serde_json::Value),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterConfig {
     pub default: String,
     #[serde(default)]

@@ -1,0 +1,168 @@
+use std::convert::Infallible;
+use std::net::SocketAddr;
+
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response, Server as HyperServer};
+use tokio::sync::oneshot;
+
+use crate::config::Config;
+
+pub struct Server {
+    config: Config,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+}
+
+impl Server {
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            shutdown_tx: None,
+        }
+    }
+
+    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let addr: SocketAddr = self.config.host.parse()?;
+
+        let make_svc = make_service_fn(|_conn| async {
+            Ok::<_, Infallible>(service_fn(router))
+        });
+
+        let (tx, rx) = oneshot::channel::<()>();
+        self.shutdown_tx = Some(tx);
+
+        let server = HyperServer::bind(&addr)
+            .serve(make_svc)
+            .with_graceful_shutdown(async {
+                rx.await.ok();
+            });
+
+        println!("🚀 Server started on http://{}", addr);
+
+        if let Err(e) = server.await {
+            eprintln!("❌ Server error: {}", e);
+            return Err(Box::new(e));
+        }
+
+        println!("✅ Server has stopped gracefully");
+        Ok(())
+    }
+
+    pub fn stop(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(tx) = self.shutdown_tx.take() {
+            tx.send(()).map_err(|_| "Shutdown signal failed")?;
+            println!("🛑 Server is shutting down gracefully...");
+        }
+        Ok(())
+    }
+}
+
+async fn router(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/") | (&Method::POST, "/") => {
+            let response = Response::builder()
+                .status(200)
+                .header("Content-Type", "text/plain")
+                .body(Body::from("OK"))
+                .unwrap();
+            Ok(response)
+        }
+        _ => {
+            let response = Response::builder()
+                .status(404)
+                .header("Content-Type", "text/plain")
+                .body(Body::from("Not Found"))
+                .unwrap();
+            Ok(response)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hyper::Client;
+
+    #[tokio::test]
+    async fn test_server_health_check() {
+        let config = Config { host: "127.0.0.1:0".to_string() };
+        let mut server = Server::new(config);
+        
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let make_svc = make_service_fn(|_conn| async {
+            Ok::<_, Infallible>(service_fn(router))
+        });
+        
+        let server = HyperServer::bind(&addr).serve(make_svc);
+        let addr = server.local_addr();
+        
+        tokio::spawn(async move {
+            let _ = server.await;
+        });
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        let client = Client::new();
+        let uri: hyper::Uri = format!("http://{}/", addr).parse().unwrap();
+        let resp = client.get(uri).await.unwrap();
+        
+        assert_eq!(resp.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn test_server_404_not_found() {
+        let config = Config { host: "127.0.0.1:0".to_string() };
+        let mut server = Server::new(config);
+        
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let make_svc = make_service_fn(|_conn| async {
+            Ok::<_, Infallible>(service_fn(router))
+        });
+        
+        let server = HyperServer::bind(&addr).serve(make_svc);
+        let addr = server.local_addr();
+        
+        tokio::spawn(async move {
+            let _ = server.await;
+        });
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        let client = Client::new();
+        let uri: hyper::Uri = format!("http://{}/nonexistent", addr).parse().unwrap();
+        let resp = client.get(uri).await.unwrap();
+        
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn test_server_post_root() {
+        let config = Config { host: "127.0.0.1:0".to_string() };
+        let mut server = Server::new(config);
+        
+        let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        let make_svc = make_service_fn(|_conn| async {
+            Ok::<_, Infallible>(service_fn(router))
+        });
+        
+        let server = HyperServer::bind(&addr).serve(make_svc);
+        let addr = server.local_addr();
+        
+        tokio::spawn(async move {
+            let _ = server.await;
+        });
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        let client = Client::new();
+        let uri: hyper::Uri = format!("http://{}/", addr).parse().unwrap();
+        
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .body(Body::empty())
+            .unwrap();
+        
+        let resp = client.request(req).await.unwrap();
+        assert_eq!(resp.status(), 200);
+    }
+}
