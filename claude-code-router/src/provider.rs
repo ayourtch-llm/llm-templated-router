@@ -4,6 +4,7 @@ use std::time::Duration;
 use crate::config::{Config, Provider};
 use crate::router::RouterRequest;
 use crate::server::ClaudeRequest;
+use crate::transformers;
 
 #[derive(Clone)]
 pub struct ProviderClient {
@@ -176,93 +177,23 @@ impl ProviderClient {
     ) -> Result<(), Box<dyn std::error::Error>> {
         match transformer_use {
             crate::config::TransformerUse::Simple(name) => {
-                match name.as_str() {
-                    "openrouter" => {
-                        // OpenRouter transformer: Ensure tools are in OpenAI format
-                        // Don't add system field - Groq doesn't support it
-                        if let Some(tools) = body.get("tools") {
-                            let empty_vec = vec![];
-                            let tools_array = tools.as_array().unwrap_or(&empty_vec);
-                            let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
-                                let tool_obj = tool.as_object().unwrap();
-                                
-                                // Check if tool is already in OpenAI format
-                                if tool_obj.get("type").and_then(|t| t.as_str()) == Some("function") {
-                                    // Already in OpenAI format, pass through
-                                    tool.clone()
-                                } else {
-                                    // Convert from Claude format to OpenAI format
-                                    json!({
-                                        "type": "function",
-                                        "function": {
-                                            "name": tool_obj.get("name").unwrap_or(&json!("")),
-                                            "description": tool_obj.get("description").unwrap_or(&json!("")),
-                                            "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
-                                        }
-                                    })
-                                }
-                            }).collect();
-                            body["tools"] = json!(openai_tools);
-                        }
-                        // Note: system field is intentionally omitted for Groq compatibility
-                    }
-                    "gemini" => {
-                        // Gemini transformer: Convert to Gemini API format
-                        if let Some(system) = &claude_req.system {
-                            body["system"] = system.clone();
-                        }
-                        if let Some(tools) = body.get("tools") {
-                            let empty_vec = vec![];
-                            let tools_array = tools.as_array().unwrap_or(&empty_vec);
-                            let openai_tools: Vec<Value> = tools_array.iter().map(|tool| {
-                                let tool_obj = tool.as_object().unwrap();
-                                
-                                // Check if tool is already in OpenAI format
-                                if tool_obj.get("type").and_then(|t| t.as_str()) == Some("function") {
-                                    // Already in OpenAI format, pass through
-                                    tool.clone()
-                                } else {
-                                    // Convert from Claude format to OpenAI format
-                                    json!({
-                                        "type": "function",
-                                        "function": {
-                                            "name": tool_obj.get("name").unwrap_or(&json!("")),
-                                            "description": tool_obj.get("description").unwrap_or(&json!("")),
-                                            "parameters": tool_obj.get("input_schema").unwrap_or(&json!({}))
-                                        }
-                                    })
-                                }
-                            }).collect();
-                            body["tools"] = json!(openai_tools);
-                        }
-                    }
-                    _ => {
-                        log::warn!("Unknown transformer: {}", name);
-                    }
-                }
+                transformers::apply_transformer(name, body, claude_req, None)
             }
             crate::config::TransformerUse::WithOptions(options_array) => {
                 if options_array.len() >= 2 {
-                    if let (Some(name), Some(options)) = (
-                        options_array[0].as_str(),
-                        options_array[1].as_object()
-                    ) {
-                        match name {
-                            "maxtoken" => {
-                                // MaxToken transformer: Override max_tokens
-                                if let Some(max_tokens) = options.get("max_tokens") {
-                                    body["max_tokens"] = max_tokens.clone();
-                                }
-                            }
-                            _ => {
-                                log::warn!("Unknown transformer with options: {}", name);
-                            }
-                        }
+                    if let Some(name) = options_array[0].as_str() {
+                        let options = Some(&options_array[1]);
+                        transformers::apply_transformer(name, body, claude_req, options)
+                    } else {
+                        log::warn!("Invalid transformer options format: missing name");
+                        Ok(())
                     }
+                } else {
+                    log::warn!("Invalid transformer options format: insufficient array length");
+                    Ok(())
                 }
             }
         }
-        Ok(())
     }
     
     pub fn convert_openai_to_claude_format(&self, openai_response: Value) -> Result<Value, Box<dyn std::error::Error>> {
