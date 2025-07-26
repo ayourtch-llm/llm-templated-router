@@ -4,6 +4,7 @@ use std::time::Duration;
 use crate::config::Config;
 use crate::router::RouterRequest;
 
+#[derive(Clone)]
 pub struct ProviderClient {
     client: reqwest::Client,
 }

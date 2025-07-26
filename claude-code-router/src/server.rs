@@ -3,25 +3,29 @@ use std::net::SocketAddr;
 
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server as HyperServer, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::oneshot;
 
 use crate::config::Config;
 use crate::router::{Router, RouterRequest, Message, Tool};
+use crate::provider::ProviderClient;
 
 pub struct Server {
     config: Config,
     router: Router,
+    provider_client: ProviderClient,
     shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl Server {
     pub fn new(config: Config) -> Self {
         let router = Router::new(config.clone());
+        let provider_client = ProviderClient::new();
         Self {
             config,
             router,
+            provider_client,
             shutdown_tx: None,
         }
     }
@@ -32,15 +36,18 @@ impl Server {
 
         let config = self.config.clone();
         let router = self.router.clone();
+        let provider_client = self.provider_client.clone();
 
         let make_svc = make_service_fn(move |_conn| {
             let config = config.clone();
             let router = router.clone();
+            let provider_client = provider_client.clone();
             async move {
                 Ok::<_, Infallible>(service_fn(move |req| {
                     let config = config.clone();
                     let router = router.clone();
-                    handle_request(req, config, router)
+                    let provider_client = provider_client.clone();
+                    handle_request(req, config, router, provider_client)
                 }))
             }
         });
@@ -82,16 +89,12 @@ struct ClaudeRequest {
     thinking: Option<Value>,
 }
 
-#[derive(Serialize)]
-struct RoutingResponse {
-    routed_to: String,
-    token_count: u32,
-}
 
 async fn handle_request(
     req: Request<Body>,
     config: Config,
     router: Router,
+    provider_client: ProviderClient,
 ) -> Result<Response<Body>, Infallible> {
     let path = req.uri().path();
     let method = req.method();
@@ -112,7 +115,7 @@ async fn handle_request(
                 .unwrap())
         }
         (&Method::POST, "/v1/messages") => {
-            handle_claude_request(req, router).await
+            handle_claude_request(req, router, provider_client, config).await
         }
         _ => {
             Ok(Response::builder()
@@ -151,6 +154,8 @@ fn check_auth(req: &Request<Body>, config: &Config) -> Result<(), Response<Body>
 async fn handle_claude_request(
     req: Request<Body>,
     router: Router,
+    provider_client: ProviderClient,
+    config: Config,
 ) -> Result<Response<Body>, Infallible> {
     let bytes = match hyper::body::to_bytes(req.into_body()).await {
         Ok(b) => b,
@@ -184,66 +189,41 @@ async fn handle_claude_request(
         thinking: claude_req.thinking.and_then(|v| v.as_bool()),
     };
 
-    let token_count = estimate_token_count(&router_request);
-    match router.route_request(&router_request) {
-        Ok(route) => {
-            let response = RoutingResponse {
-                routed_to: route,
-                token_count,
-            };
-            
+    // Route the request
+    let route = match router.route_request(&router_request) {
+        Ok(route) => route,
+        Err(e) => {
+            log::error!("Routing error: {}", e);
+            return Ok(Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("Content-Type", "application/json")
+                .body(Body::from(r#"{"error":"Routing failed"}"#))
+                .unwrap());
+        }
+    };
+
+    log::info!("🧭 Routing request to: {}", route);
+
+    // Forward to provider
+    match provider_client.send_request(&route, &router_request, &config).await {
+        Ok(provider_response) => {
             Ok(Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(Body::from(serde_json::to_string(&response).unwrap()))
+                .body(Body::from(provider_response.to_string()))
                 .unwrap())
         }
         Err(e) => {
-            eprintln!("❌ Routing error: {}", e);
+            log::error!("Provider error: {}", e);
             Ok(Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .status(StatusCode::BAD_GATEWAY)
                 .header("Content-Type", "application/json")
-                .body(Body::from(r#"{"error":"Internal server error"}"#))
+                .body(Body::from(r#"{"error":"Provider request failed"}"#))
                 .unwrap())
         }
     }
 }
 
-fn estimate_token_count(request: &RouterRequest) -> u32 {
-    let mut chars = 0;
-    
-    // Messages
-    for msg in &request.messages {
-        match &msg.content {
-            Value::String(s) => chars += s.len(),
-            Value::Array(arr) => {
-                for item in arr {
-                    if let Some(s) = item.as_str() {
-                        chars += s.len();
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    
-    // System prompt
-    if let Some(system) = &request.system {
-        chars += system.to_string().len();
-    }
-    
-    // Tools
-    if let Some(tools) = &request.tools {
-        for tool in tools {
-            chars += tool.name.len();
-            if let Some(desc) = &tool.description {
-                chars += desc.len();
-            }
-        }
-    }
-    
-    (chars / 4) as u32
-}
 
 #[cfg(test)]
 mod tests {
