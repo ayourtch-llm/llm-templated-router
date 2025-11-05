@@ -37,9 +37,14 @@ cargo run --bin ccr -- code "list the files in current directory"
 
 **Features:**
 - Intelligent routing based on token count, model type, tools
-- Multiple LLM providers (OpenRouter, Groq, Gemini, etc.)
+- Multiple LLM providers (cloud: Groq, OpenRouter, Anthropic, OpenAI, Gemini)
+- Local provider support (Ollama, vLLM, llama.cpp)
 - Format transformation between Claude and OpenAI APIs
 - Compatible with TypeScript version configuration
+
+**📖 Documentation:**
+- **[PROVIDERS.md](PROVIDERS.md)** - Comprehensive guide to configuring providers and routing
+- **[CLAUDE.md](CLAUDE.md)** - Project architecture and development guidelines
 
 ## 💭 Claude's Assessment of Spec-Driven Development
 

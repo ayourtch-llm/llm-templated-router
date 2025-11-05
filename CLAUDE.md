@@ -18,6 +18,16 @@ This is a Rust workspace that implements an LLM-templated router system with a u
 
 ## Claude Code Router Project
 
+### Documentation
+
+**📖 For comprehensive provider setup and routing configuration, see [PROVIDERS.md](PROVIDERS.md)**, which covers:
+- Complete provider configuration parameters
+- Local providers: Ollama, vLLM, llama.cpp
+- Cloud providers: Groq, OpenRouter, Anthropic, OpenAI, Gemini
+- Router configuration and intelligent routing logic
+- Transformer usage and when to apply them
+- Complete configuration examples
+
 ### Current Status (Production Ready - 85-90% Feature Parity)
 
 The `claude-code-router/` workspace member is a **production-ready Rust reimplementation** of the TypeScript claude-code-router project. Through comprehensive spec-to-code verification and TypeScript comparison analysis, the implementation achieves 85-90% feature parity with excellent core functionality.
